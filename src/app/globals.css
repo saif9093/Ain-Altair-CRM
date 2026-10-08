@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* Ain AlTair brand tokens — taken from www.ainaltair.com */
+@theme {
+  --color-ink: #fafaf7;
+  --color-ink-2: #f2f2ee;
+  --color-ink-3: #ffffff;
+  --color-ink-4: #ebebe6;
+  --color-paper: #0b0b0b;
+  --color-mute: #55554f;
+  --color-dim: #8c8c86;
+  --color-line: #0a0a0a14;
+  --color-line-strong: #0a0a0a29;
+  --color-navy: #14213d;
+  --color-navy-2: #2a3d63;
+  --color-navy-tint: #eef1f6;
+  --color-signal: #e8461f;
+  --color-signal-2: #d23a12;
+  --color-signal-ink: #b5310f;
+  --color-signal-tint: #fdeee8;
+  --color-ok: #1f7a4d;
+  --color-ok-tint: #e7f4ec;
+  --color-warn: #a86a00;
+  --color-warn-tint: #fbf1dc;
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --ease-expo: cubic-bezier(.16, 1, .3, 1);
+}
+
+html, body { background: var(--color-ink); color: var(--color-paper); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+/* Mono eyebrow label with the signal-orange square, as used across the site */
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--color-mute); display: inline-flex; align-items: center; gap: .5rem; }
+.eyebrow::before { content: ""; width: 6px; height: 6px; background: var(--color-signal); display: inline-block; }
+.tag-mono { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.display { font-weight: 800; letter-spacing: -0.035em; line-height: .95; }
+.hero-bg { background: radial-gradient(120% 140% at 100% 100%, #b5310f 0%, #3a1f2d 35%, #14213d 70%, #0f1830 100%); }
+.focus-ring:focus-visible { outline: 2px solid var(--color-signal); outline-offset: 2px; }
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 8px; }

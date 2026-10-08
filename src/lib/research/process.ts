@@ -208,7 +208,7 @@ export async function processBusiness(db: SupabaseClient, businessId: string, op
   // ---- 5. Classification → scoring → opportunities
   const override = (b.overrides ?? {}) as Record<string, { value: unknown }>;
   let websiteStatus: WebsiteStatus = classification?.status ?? (b.website_url ? (b.website_status as WebsiteStatus) ?? "UNKNOWN" : "NO_WEBSITE");
-  let websiteIssues: WebsiteIssue[] = classification?.issues ?? ((b.website_issues ?? []) as WebsiteIssue[]);
+  const websiteIssues: WebsiteIssue[] = classification?.issues ?? ((b.website_issues ?? []) as WebsiteIssue[]);
   if (override.website_status) websiteStatus = override.website_status.value as WebsiteStatus;
   const category = b.category_key ? categoryByKey(b.category_key) : undefined;
   const signals: BusinessSignals = {

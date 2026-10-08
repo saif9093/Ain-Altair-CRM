@@ -1,0 +1,5 @@
+-- Optional local seed. Reference data (roles, permissions, categories,
+-- providers, default organisation) is created by the migrations.
+-- To bootstrap the first Super Admin after they register, run:
+--   update public.profiles set status = 'ACTIVE', role_key = 'SUPER_ADMIN',
+--     approved_at = now() where lower(email) = lower('you@ainaltair.com');
