@@ -31,7 +31,7 @@ export function sheetCandidates(url: string): string[] {
   ];
 }
 
-export async function readPublicSheet(url: string): Promise<{ headers: string[]; rows: Record<string, string>[]; title: string }> {
+export async function readPublicSheet(url: string, opts: { sheet?: string | null; onWorkbook?: (buf: ArrayBuffer) => void } = {}): Promise<{ headers: string[]; rows: Record<string, string>[]; title: string }> {
   const attempts: string[] = [];
   for (const candidate of sheetCandidates(url)) {
     let res: Response;
@@ -51,7 +51,8 @@ export async function readPublicSheet(url: string): Promise<{ headers: string[];
     if (candidate.includes("drive.google.com") || candidate.includes("format=xlsx") || /spreadsheetml|octet-stream/.test(type)) {
       const buf = await res.arrayBuffer();
       if (buf.byteLength > 15 * 1024 * 1024) throw new Error("Sheet is too large (max 15 MB)");
-      const x = await parseUpload(buf, "sheet.xlsx").catch(() => null);
+      opts.onWorkbook?.(buf);
+      const x = await parseUpload(buf, "sheet.xlsx", opts.sheet).catch(() => null);
       if (!x || !x.headers.length) { attempts.push("xlsx export unreadable"); continue; }
       return { ...x, title: "Google Sheet" };
     }

@@ -16,6 +16,7 @@ import { loadOrgSettings } from "@/lib/research/settings";
 import { checkQualityGates } from "@/lib/intel/qualification";
 import { executeAssignment } from "@/lib/leads/assign";
 import { act } from "./_util";
+import { kickWorker } from "@/lib/jobs/kick";
 
 export interface Interpreted { rule: ParsedSearch; ai: AiInterpretation | null; aiError: string | null }
 
@@ -67,6 +68,7 @@ export async function startSearch(input: { criteria: unknown; name?: string; sav
     }
     const admin = createAdminClient();
     const jobId = await createSearchJob(admin, { organisationId: s.organisationId, userId: s.userId, criteria, name: input.name, searchId });
+    await kickWorker();
     await writeAudit({ organisationId: s.organisationId, userId: s.userId, userEmail: s.email, action: "search.started", entityType: "search_job", entityId: jobId, after: { name: input.name, target: criteria.output.targetCount, depth: criteria.output.depth } });
     return { jobId, searchId };
   });

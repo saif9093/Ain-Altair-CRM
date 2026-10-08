@@ -197,8 +197,11 @@ export async function decideApproval(input: { id: string; approve: boolean; note
         await admin.from("profiles").update({ role_key: p.role }).eq("id", p.userId).eq("organisation_id", s.organisationId);
         result = { role: p.role };
       } else if (req.type === "LARGE_IMPORT") {
-        const { executeImport } = await import("@/lib/imports/execute");
-        result = await executeImport(admin, p.importId as string, s.userId);
+        const { enqueue } = await import("@/lib/jobs/queue");
+        await admin.from("imports").update({ status: "IMPORTING" }).eq("id", p.importId as string);
+        await enqueue(admin, { organisationId: s.organisationId, kind: "import.process", priority: 5, payload: { importId: p.importId, actorId: req.requested_by ?? s.userId } });
+        await (await import("@/lib/jobs/kick")).kickWorker();
+        result = { queued: true };
       } else if (req.type === "BULK_DELETE" || req.type === "PERMANENT_DELETE" || req.type === "DATA_PURGE") {
         const ids = (p.businessIds as string[]) ?? [];
         for (let i = 0; i < ids.length; i += 300) await admin.from("businesses").delete().in("id", ids.slice(i, i + 300)).eq("organisation_id", s.organisationId);

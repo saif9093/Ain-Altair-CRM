@@ -1,14 +1,15 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button, Card, CardHeader, Field, Select } from "@/components/ui";
 import { useAction } from "@/components/client";
-import { saveImportMapping, runImport } from "@/app/actions/imports";
+import { saveImportMapping, runImport, promoteImport } from "@/app/actions/imports";
 
 export function ImportWizard({ imp, fields }: { imp: { id: string; status: string; headers: string[]; column_mapping: Record<string, string | null>; mode: string | null; match_strategy: string | null; target_lifecycle: string; new_count: number; update_count: number }; fields: { key: string; label: string }[] }) {
   const [mapping, setMapping] = useState(imp.column_mapping);
-  const [mode, setMode] = useState(imp.mode ?? "");
+  const [mode, setMode] = useState(imp.mode ?? "UPSERT");
   const [match, setMatch] = useState(imp.match_strategy ?? "AUTO");
-  const [target, setTarget] = useState(imp.target_lifecycle);
+  const [target, setTarget] = useState(imp.status === "UPLOADED" ? "ACTIVE" : imp.target_lifecycle);
   const { run, pending } = useAction();
   const done = ["COMPLETED", "IMPORTING", "PENDING_APPROVAL"].includes(imp.status);
   return (
@@ -28,9 +29,21 @@ export function ImportWizard({ imp, fields }: { imp: { id: string; status: strin
       </div>
       <div className="flex flex-wrap gap-2 border-t border-line p-5">
         <Button variant="dark" disabled={pending || done || !mode || !Object.values(mapping).includes("name" as never)} onClick={() => run(() => saveImportMapping({ id: imp.id, mapping, mode, match, target }))}>{pending ? "Checking…" : "Step 2 · Preview & validate"}</Button>
-        {imp.status === "PREVIEWED" && <Button variant="primary" disabled={pending} onClick={() => run(() => runImport(imp.id))}>Step 3 · Import {imp.new_count + imp.update_count} rows</Button>}
+        {imp.status === "PREVIEWED" && <Button variant="primary" size="lg" disabled={pending || imp.new_count + imp.update_count === 0} onClick={() => run(() => runImport(imp.id))}>Step 3 · Import {imp.new_count + imp.update_count} rows into {target === "ACTIVE" ? "the CRM" : "Research"} →</Button>}
         {!Object.values(mapping).includes("name" as never) && <span className="self-center text-xs text-signal-ink">Map a column to “Business name”.</span>}
       </div>
     </Card>
   );
+}
+
+/** Refreshes the page every few seconds while an import runs (real counts from the database). */
+export function ImportLive() {
+  const router = useRouter();
+  useEffect(() => { const t = setInterval(() => router.refresh(), 3000); return () => clearInterval(t); }, [router]);
+  return null;
+}
+
+export function PromoteButton({ id }: { id: string }) {
+  const { run, pending } = useAction();
+  return <Button variant="primary" disabled={pending} onClick={() => run(() => promoteImport(id))}>{pending ? "Moving…" : "Move these leads into the CRM"}</Button>;
 }

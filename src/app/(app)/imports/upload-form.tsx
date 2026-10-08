@@ -11,12 +11,15 @@ export function UploadForm({ sheets }: { sheets: boolean }) {
   const [url, setUrl] = useState("");
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [tabs, setTabs] = useState<{ name: string; rows: number; headers: string[] }[] | null>(null);
+  const [pickTab, setPickTab] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const toast = useToast();
 
-  const submit = async () => {
+  const submit = async (chosenTab?: string) => {
     const fd = new FormData();
+    if (chosenTab) fd.set("sheet", chosenTab);
     if (tab === "file") { if (!file) return toast("Choose a file first", "err"); fd.set("file", file); }
     else { if (!url.trim()) return toast("Paste a Google Sheets link", "err"); fd.set("sheetUrl", url.trim()); }
     setBusy(true);
@@ -24,6 +27,7 @@ export function UploadForm({ sheets }: { sheets: boolean }) {
     const j = await r.json().catch(() => ({}));
     setBusy(false);
     if (!r.ok) return toast(j.error ?? "Import failed", "err");
+    if (j.needsSheet) { setTabs(j.sheets); setPickTab(j.sheets[0]?.name ?? ""); return; }
     router.push(`/imports/${j.id}`);
   };
 
@@ -42,7 +46,7 @@ export function UploadForm({ sheets }: { sheets: boolean }) {
             <label className="block text-sm font-medium">Paste your Google Sheets link</label>
             <div className="flex flex-col gap-2 md:flex-row">
               <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…" className="h-12 flex-1 text-[15px]" />
-              <Button variant="primary" size="lg" disabled={busy} onClick={submit}>{busy ? "Reading sheet…" : "Import from sheet →"}</Button>
+              <Button variant="primary" size="lg" disabled={busy} onClick={() => submit()}>{busy ? "Reading sheet…" : "Import from sheet →"}</Button>
             </div>
             <div className="rounded-xl bg-navy-tint px-4 py-3 text-sm text-navy">
               <b>Make the sheet viewable:</b> in Google Sheets click <b>Share</b> → General access → <b>Anyone with the link</b> (Viewer). The first row must contain column headers. The tab in your link (gid) is the one imported.
@@ -61,7 +65,28 @@ export function UploadForm({ sheets }: { sheets: boolean }) {
               <div className="text-xs text-mute">{file ? `${(file.size / 1024).toFixed(0)} KB` : "Max 15 MB · first row = column headers"}</div>
               <input ref={input} type="file" accept=".xlsx,.csv" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </div>
-            <div className="flex justify-end"><Button variant="primary" size="lg" disabled={busy || !file} onClick={submit}>{busy ? "Reading…" : "Upload & map columns →"}</Button></div>
+            <div className="flex justify-end"><Button variant="primary" size="lg" disabled={busy || !file} onClick={() => submit()}>{busy ? "Reading…" : "Upload & map columns →"}</Button></div>
+          </div>
+        )}
+        {tabs && (
+          <div className="mt-5 rounded-2xl border border-signal/40 bg-signal-tint/40 p-4">
+            <div className="font-semibold">This file has {tabs.length} tabs — which one should be imported?</div>
+            <div className="mt-3 space-y-2">
+              {[...tabs, { name: "__all__", rows: tabs.reduce((a, t) => a + t.rows, 0), headers: [] }].map((t) => {
+                const hasName = t.name === "__all__" || t.headers.some((h) => /company|business name|^name$|shop name/i.test(h));
+                return (
+                  <label key={t.name} className={cx("flex cursor-pointer items-start gap-3 rounded-xl border bg-ink-3 p-3 text-sm", pickTab === t.name ? "border-signal" : "border-line")}>
+                    <input type="radio" name="tab" className="mt-1" checked={pickTab === t.name} onChange={() => setPickTab(t.name)} />
+                    <span className="flex-1">
+                      <span className="font-medium">{t.name === "__all__" ? "All tabs combined" : t.name}</span> <span className="text-mute">· {t.rows} rows</span>
+                      {t.name !== "__all__" && <span className="block truncate text-xs text-dim">{t.headers.slice(0, 8).join(" · ")}</span>}
+                      {!hasName && <span className="block text-xs text-signal-ink">⚠ No Company / Business name column — rows can&apos;t be imported without a name.</span>}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex gap-2"><Button variant="primary" disabled={busy || !pickTab} onClick={() => submit(pickTab)}>{busy ? "Reading…" : "Use this tab →"}</Button><Button variant="ghost" onClick={() => setTabs(null)}>Cancel</Button></div>
           </div>
         )}
         <ol className="mt-6 grid gap-3 text-sm md:grid-cols-3">

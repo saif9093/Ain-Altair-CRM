@@ -5,7 +5,7 @@
  */
 export const IMPORT_FIELDS = {
   lead_code: { label: "Lead ID", synonyms: ["lead id", "lead code", "id", "crm id", "ref"] },
-  name: { label: "Business name", synonyms: ["business", "business name", "company", "company name", "name", "shop name", "store", "title"] },
+  name: { label: "Business name", synonyms: ["business name", "company", "company name", "name", "shop name", "store name", "business", "title"] },
   category: { label: "Category", synonyms: ["category", "niche", "industry", "type", "business type", "sector"] },
   phone: { label: "Phone", synonyms: ["phone", "phone number", "telephone", "tel", "mobile", "contact number", "contact no", "landline"] },
   whatsapp: { label: "WhatsApp number", synonyms: ["whatsapp", "whatsapp no", "whatsapp number", "wa", "wa number", "whats app"] },
@@ -38,7 +38,10 @@ export function suggestMapping(headers: string[]): Record<string, ImportField | 
     let best: { f: ImportField; score: number } | null = null;
     for (const [f, def] of Object.entries(IMPORT_FIELDS) as [ImportField, (typeof IMPORT_FIELDS)[ImportField]][]) {
       for (const syn of def.synonyms) {
-        const score = n === syn ? 3 : n.startsWith(syn) || n.endsWith(syn) ? 2 : n.includes(syn) && syn.length >= 4 ? 1 : 0;
+        // Generic one-word synonyms ("business", "name", "title") must match exactly,
+        // so "Business Size" or "Decision-Maker name" never become the business name.
+        const generic = f === "name" && ["business", "name", "title"].includes(syn);
+        const score = n === syn ? 3 : generic ? 0 : n.startsWith(syn) || n.endsWith(syn) ? 2 : n.includes(syn) && syn.length >= 4 ? 1 : 0;
         if (score && (!best || score > best.score)) best = { f, score };
       }
     }

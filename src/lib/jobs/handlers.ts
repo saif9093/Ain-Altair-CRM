@@ -293,7 +293,14 @@ async function processLeads(db: SupabaseClient, t: JobTask) {
   }
 }
 
+async function processImport(db: SupabaseClient, t: JobTask): Promise<HandlerResult | void> {
+  const { executeImport } = await import("@/lib/imports/execute");
+  const r = await executeImport(db, t.payload.importId as string, t.payload.actorId as string, Date.now() + 35_000);
+  if (!r.done) return { deferMs: 1_000 };
+}
+
 export const HANDLERS: Record<string, Handler> = {
+  "import.process": processImport,
   "search.plan": planSearch,
   "search.source": sourceSearch,
   "search.enrich": enrichResults,

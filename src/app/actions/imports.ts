@@ -6,7 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/audit";
 import { IMPORT_FIELDS } from "@/lib/imports/mapping";
-import { executeImport, previewImport } from "@/lib/imports/execute";
+import { previewImport } from "@/lib/imports/execute";
+import { enqueue } from "@/lib/jobs/queue";
+import { kickWorker } from "@/lib/jobs/kick";
 import { act } from "./_util";
 
 const LARGE_IMPORT = 1000;
@@ -46,9 +48,35 @@ export async function runImport(id: string) {
       revalidatePath(`/imports/${imp.id}`);
       return { ok: true as const, message: "Large import submitted for Super Admin approval" };
     }
-    const r = await executeImport(admin, imp.id, s.userId);
-    await writeAudit({ organisationId: s.organisationId, userId: s.userId, userEmail: s.email, action: "import.completed", entityType: "import", entityId: imp.id, after: r });
+    await admin.from("imports").update({ status: "IMPORTING" }).eq("id", imp.id).in("status", ["PREVIEWED"]);
+    await enqueue(admin, { organisationId: s.organisationId, kind: "import.process", priority: 5, payload: { importId: imp.id, actorId: s.userId } });
+    await kickWorker();
+    await writeAudit({ organisationId: s.organisationId, userId: s.userId, userEmail: s.email, action: "import.started", entityType: "import", entityId: imp.id, after: { rows: imp.row_count } });
     revalidatePath(`/imports/${imp.id}`);
-    return { ok: true as const, message: `Imported ${r.imported}, updated ${r.updated}, errors ${r.errors}` };
+    return { ok: true as const, message: "Import started — you can watch progress here" };
+  });
+}
+
+/** Move leads that an import put into Research straight into the CRM. */
+export async function promoteImport(id: string) {
+  return act(async () => {
+    const s = await assertPermission("research.approve");
+    const imp = await ownImport(id);
+    const admin = createAdminClient();
+    const ids: string[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data } = await admin.from("import_rows").select("business_id").eq("import_id", imp.id).not("business_id", "is", null).range(from, from + 999);
+      ids.push(...(data ?? []).map((d) => d.business_id as string));
+      if (!data || data.length < 1000) break;
+    }
+    let moved = 0;
+    for (let i = 0; i < ids.length; i += 300) {
+      const { data } = await admin.from("businesses").update({ lifecycle: "ACTIVE", approved_at: new Date().toISOString(), approved_by: s.userId }).in("id", ids.slice(i, i + 300)).eq("lifecycle", "RESEARCH").eq("organisation_id", s.organisationId).select("id");
+      moved += data?.length ?? 0;
+    }
+    await admin.from("imports").update({ target_lifecycle: "ACTIVE" }).eq("id", imp.id);
+    await writeAudit({ organisationId: s.organisationId, userId: s.userId, userEmail: s.email, action: "import.promoted_to_crm", entityType: "import", entityId: imp.id, after: { moved } });
+    revalidatePath(`/imports/${imp.id}`);
+    return { ok: true as const, message: `${moved} lead${moved === 1 ? "" : "s"} moved into the CRM` };
   });
 }

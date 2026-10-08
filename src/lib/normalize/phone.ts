@@ -27,7 +27,15 @@ export function normalizePhone(raw: string | null | undefined, defaultRegion: st
   input = input.split(/(?:ext\.?|x|#)\s*\d+$/i)[0];
 
   const region = (defaultRegion || "AE").toUpperCase() as CountryCode;
-  const parsed = parsePhoneNumberFromString(input, region);
+  let parsed = parsePhoneNumberFromString(input, region);
+  if (!parsed || !parsed.isValid()) {
+    // Numbers written with the country code but without "+" (e.g. "971 4 437 0626")
+    const digits = input.replace(/\D/g, "");
+    if (!input.trim().startsWith("+") && digits.length >= 10 && digits.length <= 15) {
+      const intl = parsePhoneNumberFromString(`+${digits}`);
+      if (intl?.isValid()) parsed = intl;
+    }
+  }
   if (!parsed || !parsed.isValid()) return null;
 
   const t = parsed.getType();

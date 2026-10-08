@@ -57,3 +57,18 @@ describe("exports", () => {
     expect(exportFilename("xlsx", new Date("2026-10-08"))).toBe("AIN_ALTAIR_LEADS_2026-10-08.xlsx");
   });
 });
+
+describe("import robustness", () => {
+  it("never maps Business Size or Decision-Maker to the business name", () => {
+    const m = suggestMapping(["Industry", "Business Size", "Decision-Maker", "Phone"]);
+    expect(Object.values(m)).not.toContain("name");
+    expect(suggestMapping(["Company", "Business Size"]).Company).toBe("name");
+  });
+  it("cleans placeholders and splits phone + WhatsApp link cells", () => {
+    const { row } = cleanRow({ name: "X", phone: "971 6 555 0357\nhttps://wa.me/+971585200357", email: "Not mentioned", website: "No website" }, "AE");
+    expect(row.phone).toBe("971 6 555 0357");
+    expect(row.whatsapp).toBe("+971585200357");
+    expect(row.email).toBeUndefined();
+    expect(row.website).toBeUndefined();
+  });
+});

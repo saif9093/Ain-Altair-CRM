@@ -2,31 +2,67 @@ import ExcelJS from "exceljs";
 import Papa from "papaparse";
 
 export interface ParsedSheet { headers: string[]; rows: Record<string, string>[] }
+export interface SheetInfo { name: string; rows: number; headers: string[] }
 
 const MAX_ROWS = 20_000;
+export const ALL_TABS = "__all__";
 
-export async function parseUpload(buffer: ArrayBuffer, filename: string): Promise<ParsedSheet> {
+function sheetToRows(ws: ExcelJS.Worksheet): ParsedSheet {
+  const headers: string[] = [];
+  ws.getRow(1).eachCell({ includeEmpty: true }, (c, i) => (headers[i - 1] = cellText(c.value).trim() || `Column ${i}`));
+  // de-duplicate header names
+  const seen = new Map<string, number>();
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i] ?? `Column ${i + 1}`;
+    const n = (seen.get(h) ?? 0) + 1;
+    seen.set(h, n);
+    headers[i] = n > 1 ? `${h} (${n})` : h;
+  }
+  const rows: Record<string, string>[] = [];
+  ws.eachRow({ includeEmpty: false }, (row, n) => {
+    if (n === 1 || rows.length >= MAX_ROWS) return;
+    const r: Record<string, string> = {};
+    headers.forEach((h, i) => (r[h] = cellText(row.getCell(i + 1).value).trim()));
+    if (Object.values(r).some(Boolean)) rows.push(r);
+  });
+  const used = headers.filter((h) => !/^Column \d+$/.test(h) || rows.some((r) => r[h]));
+  return { headers: used, rows: rows.map((r) => Object.fromEntries(used.map((h) => [h, r[h] ?? ""]))) };
+}
+
+/** List the tabs of a workbook (name, data rows, headers). */
+export async function listSheets(buffer: ArrayBuffer): Promise<SheetInfo[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  return wb.worksheets.map((ws) => { const p = sheetToRows(ws); return { name: ws.name, rows: p.rows.length, headers: p.headers }; }).filter((s) => s.rows > 0);
+}
+
+/**
+ * Parse an upload. For workbooks, `sheet` picks a tab by name; ALL_TABS combines
+ * every tab (columns unioned by header name, with a "Source tab" column).
+ */
+export async function parseUpload(buffer: ArrayBuffer, filename: string, sheet?: string | null): Promise<ParsedSheet> {
   if (/\.csv$/i.test(filename)) {
-    const text = new TextDecoder("utf-8").decode(buffer).replace(/^﻿/, "");
+    const text = new TextDecoder("utf-8").decode(buffer).replace(/^\uFEFF/, "");
     const res = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: "greedy", transformHeader: (h) => h.trim() });
     return { headers: (res.meta.fields ?? []).filter(Boolean), rows: res.data.slice(0, MAX_ROWS) };
   }
   if (/\.xlsx$/i.test(filename)) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
-    const ws = wb.worksheets[0];
-    if (!ws) return { headers: [], rows: [] };
-    const headers: string[] = [];
-    ws.getRow(1).eachCell({ includeEmpty: true }, (c, i) => (headers[i - 1] = cellText(c.value).trim() || `Column ${i}`));
-    const rows: Record<string, string>[] = [];
-    ws.eachRow({ includeEmpty: false }, (row, n) => {
-      if (n === 1 || rows.length >= MAX_ROWS) return;
-      const r: Record<string, string> = {};
-      headers.forEach((h, i) => (r[h] = cellText(row.getCell(i + 1).value).trim()));
-      if (Object.values(r).some(Boolean)) rows.push(r);
-    });
-    const used = headers.filter((h) => !/^Column \d+$/.test(h) || rows.some((r) => r[h]));
-    return { headers: used, rows: rows.map((r) => Object.fromEntries(used.map((h) => [h, r[h] ?? ""]))) };
+    const sheets = wb.worksheets.filter((ws) => ws.actualRowCount > 1);
+    if (!sheets.length) return { headers: [], rows: [] };
+    if (sheet === ALL_TABS) {
+      const headers: string[] = ["Source tab"];
+      const rows: Record<string, string>[] = [];
+      for (const ws of sheets) {
+        const p = sheetToRows(ws);
+        for (const h of p.headers) if (!headers.includes(h)) headers.push(h);
+        for (const r of p.rows) if (rows.length < MAX_ROWS) rows.push({ "Source tab": ws.name, ...r });
+      }
+      return { headers, rows: rows.map((r) => Object.fromEntries(headers.map((h) => [h, r[h] ?? ""]))) };
+    }
+    const ws = (sheet && sheets.find((w) => w.name === sheet)) || sheets[0];
+    return sheetToRows(ws);
   }
   throw new Error("Unsupported file type — upload .xlsx or .csv");
 }

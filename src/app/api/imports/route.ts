@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { assertPermission, AuthError } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/audit";
-import { parseUpload } from "@/lib/imports/parse";
+import { listSheets, parseUpload } from "@/lib/imports/parse";
 import { readSheet, sheetsConfigured } from "@/lib/imports/sheets";
 import { readPublicSheet } from "@/lib/imports/public-sheet";
 import { suggestMapping } from "@/lib/imports/mapping";
@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     const form = await req.formData();
     const file = form.get("file");
     const sheetUrl = form.get("sheetUrl");
+    const tab = typeof form.get("sheet") === "string" && form.get("sheet") ? String(form.get("sheet")) : null;
     let parsed: { headers: string[]; rows: Record<string, string>[] };
     let filename: string;
     let fileType: "XLSX" | "CSV" | "GOOGLE_SHEETS";
@@ -24,13 +25,24 @@ export async function POST(req: Request) {
       if (file.size > MAX_BYTES) return NextResponse.json({ error: "File too large (max 15 MB)" }, { status: 400 });
       filename = file.name.slice(0, 200);
       fileType = /\.csv$/i.test(filename) ? "CSV" : "XLSX";
-      parsed = await parseUpload(await file.arrayBuffer(), filename);
+      const buf = await file.arrayBuffer();
+      if (fileType === "XLSX" && !tab) {
+        const sheets = await listSheets(buf);
+        if (sheets.length > 1) return NextResponse.json({ needsSheet: true, sheets });
+      }
+      parsed = await parseUpload(buf, filename, tab);
+      if (tab) filename = `${filename} — ${tab === "__all__" ? "all tabs" : tab}`;
     } else if (typeof sheetUrl === "string" && sheetUrl.trim()) {
       // Public link first (no setup needed); fall back to the service account for private sheets.
       try {
-        const pub = await readPublicSheet(sheetUrl);
+        let workbook: ArrayBuffer | null = null;
+        const pub = await readPublicSheet(sheetUrl, { sheet: tab, onWorkbook: (b) => (workbook = b) });
+        if (workbook && !tab) {
+          const sheets = await listSheets(workbook);
+          if (sheets.length > 1) return NextResponse.json({ needsSheet: true, sheets });
+        }
         parsed = pub;
-        filename = pub.title;
+        filename = tab ? `${pub.title} — ${tab === "__all__" ? "all tabs" : tab}` : pub.title;
       } catch (e) {
         if (!sheetsConfigured() || /Google Sheets link|valid link/.test((e as Error).message)) throw e;
         parsed = await readSheet(sheetUrl);

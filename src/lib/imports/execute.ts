@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhone } from "@/lib/normalize/phone";
+import { normalizePhone, phoneFromWhatsappLink } from "@/lib/normalize/phone";
 import { domainOf, normalizeUrl, parseSocialUrl } from "@/lib/normalize/url";
 import { normalizeEmail, normalizeBusinessName } from "@/lib/normalize/text";
 import { DEFAULT_CATEGORIES } from "@/lib/categories/taxonomy";
@@ -28,9 +28,21 @@ export function validateRow(m: Partial<Record<ImportField, string>>, defaultCoun
   return m.name && m.name.trim().length >= 2 ? [] : ["Missing business name"];
 }
 
+const PLACEHOLDER = /^(n\/?a|na|none|nil|null|-+|—|not (mentioned|found|available|confirmed|listed|provided|known)|no (website|email|phone|data)|unknown|tbd|tba|\?)$/i;
+
 export function cleanRow(m: Partial<Record<ImportField, string>>, defaultCountry: string): { row: Partial<Record<ImportField, string>>; warnings: string[] } {
   const row = { ...m };
   const warnings: string[] = [];
+  for (const k of Object.keys(row) as ImportField[]) if (PLACEHOLDER.test(String(row[k] ?? "").trim())) delete row[k];
+  // A phone cell may hold several values ("971 6 555 0357\nhttps://wa.me/+97158…"): take the
+  // first valid number as phone and any wa.me link as WhatsApp.
+  if (row.phone && /[\n,;\/|]|wa\.me|whatsapp/i.test(row.phone)) {
+    const parts = row.phone.split(/[\n,;|]+|\s+\/\s+/).map((p) => p.trim()).filter(Boolean);
+    const wa = parts.find((p) => /wa\.me|whatsapp/i.test(p));
+    if (wa && !row.whatsapp) { const n = phoneFromWhatsappLink(wa.replace(/wa\.me\/\+/, "wa.me/")); if (n) row.whatsapp = n; }
+    const ph = parts.find((p) => !/wa\.me|whatsapp|https?:/i.test(p) && normalizePhone(p, defaultCountry));
+    if (ph) row.phone = ph;
+  }
   const drop = (f: ImportField, why: string) => { warnings.push(why); delete row[f]; };
   if (row.phone && !normalizePhone(row.phone, defaultCountry)) drop("phone", `Phone "${row.phone}" not recognised — imported without phone`);
   if (row.whatsapp && !normalizePhone(row.whatsapp, defaultCountry)) drop("whatsapp", `WhatsApp "${row.whatsapp}" not recognised — skipped`);
@@ -95,18 +107,24 @@ export async function previewImport(db: SupabaseClient, importId: string) {
   return counts;
 }
 
-export async function executeImport(db: SupabaseClient, importId: string, actorId: string) {
+/**
+ * Runs (or resumes) an import. Processes pending rows until `deadline`, then
+ * returns `{ done: false }` so the job queue can continue in the next tick —
+ * large imports never hit serverless time limits and nothing is processed twice.
+ */
+export async function executeImport(db: SupabaseClient, importId: string, actorId: string, deadline = Date.now() + 40_000) {
   const { data: imp } = await db.from("imports").select("*").eq("id", importId).single();
   if (!imp) throw new Error("Import not found");
-  if (!["PREVIEWED", "PENDING_APPROVAL"].includes(imp.status)) throw new Error(`Import is ${imp.status}`);
-  await db.from("imports").update({ status: "IMPORTING" }).eq("id", importId);
+  if (!["PREVIEWED", "PENDING_APPROVAL", "IMPORTING"].includes(imp.status)) throw new Error(`Import is ${imp.status}`);
+  if (imp.status !== "IMPORTING") await db.from("imports").update({ status: "IMPORTING" }).eq("id", importId);
   const settings = await loadOrgSettings(db, imp.organisation_id);
-  let imported = 0, updated = 0, errors = 0;
-  const touched: string[] = [];
-  for (let from = 0; ; from += 200) {
-    const { data: rows } = await db.from("import_rows").select("*").eq("import_id", importId).in("status", ["NEW", "UPDATE"]).order("row_number").range(0, 199);
+  let outOfTime = false;
+  for (;;) {
+    if (Date.now() > deadline) { outOfTime = true; break; }
+    const { data: rows } = await db.from("import_rows").select("*").eq("import_id", importId).in("status", ["NEW", "UPDATE"]).order("row_number").range(0, 24);
     if (!rows?.length) break;
     for (const r of rows) {
+      if (Date.now() > deadline) { outOfTime = true; break; }
       try {
         const m = r.mapped as Partial<Record<ImportField, string>>;
         const cat = m.category ? DEFAULT_CATEGORIES.find((c) => [c.name, ...c.synonyms].some((x) => x.toLowerCase() === m.category!.toLowerCase())) : undefined;
@@ -127,22 +145,27 @@ export async function executeImport(db: SupabaseClient, importId: string, actorI
         const wa = normalizePhone(m.whatsapp, settings.defaultCountry);
         if (wa) Object.assign(patch, { whatsapp_e164: wa.e164, whatsapp_source: "import" });
         if (m.pipeline_stage && STAGE_ALIASES[m.pipeline_stage.toLowerCase()]) patch.pipeline_stage = STAGE_ALIASES[m.pipeline_stage.toLowerCase()];
-        if (imp.target_lifecycle === "ACTIVE") Object.assign(patch, { approved_at: new Date().toISOString(), approved_by: actorId });
         if (Object.keys(patch).length) await db.from("businesses").update(patch).eq("id", id);
+        // "Import into CRM": also promote matching records that were still in research.
+        if (imp.target_lifecycle === "ACTIVE") await db.from("businesses").update({ lifecycle: "ACTIVE", approved_at: new Date().toISOString(), approved_by: actorId }).eq("id", id).eq("lifecycle", "RESEARCH");
         if (m.notes) await db.from("notes").insert({ business_id: id, body: m.notes.slice(0, 10000), visibility: "TEAM", author_id: actorId });
         await db.from("import_rows").update({ status: r.status === "UPDATE" ? "UPDATED" : "IMPORTED", business_id: id }).eq("id", r.id);
-        if (r.status === "UPDATE") updated++; else imported++;
-        touched.push(id);
+        // Score now (FAST: no external calls) so the lead is ready to work.
+        await processBusiness(db, id, { depth: "FAST", settings, actorId }).catch(() => undefined);
       } catch (e) {
-        errors++;
         await db.from("import_rows").update({ status: "ERROR", errors: [...(r.errors ?? []), (e as Error).message] }).eq("id", r.id);
       }
     }
-    if (from > 50_000) break;
+    if (outOfTime) break;
   }
-  // Score imported records (no external calls: FAST).
-  for (const id of touched.slice(0, 2000)) await processBusiness(db, id, { depth: "FAST", settings, actorId }).catch(() => undefined);
+  const count = async (st: string) => (await db.from("import_rows").select("id", { count: "exact", head: true }).eq("import_id", importId).eq("status", st)).count ?? 0;
+  const [imported, updated, errors] = await Promise.all([count("IMPORTED"), count("UPDATED"), count("ERROR")]);
+  if (outOfTime) {
+    await db.from("imports").update({ imported_count: imported, updated_count: updated, error_count: errors }).eq("id", importId);
+    return { imported, updated, errors, done: false };
+  }
   await db.from("imports").update({ status: "COMPLETED", imported_count: imported, updated_count: updated, error_count: errors, completed_at: new Date().toISOString() }).eq("id", importId);
   await db.from("activities").insert({ organisation_id: imp.organisation_id, type: "IMPORT_COMPLETED", title: `Import ${imp.filename}: ${imported} new, ${updated} updated`, actor_id: actorId, data: { importId, errors } });
-  return { imported, updated, errors };
+  await db.from("notifications").insert({ organisation_id: imp.organisation_id, user_id: actorId, type: "IMPORT_COMPLETED", title: `Import finished: ${imported} new, ${updated} updated`, body: errors ? `${errors} rows had errors` : undefined, link: `/imports/${importId}` });
+  return { imported, updated, errors, done: true };
 }

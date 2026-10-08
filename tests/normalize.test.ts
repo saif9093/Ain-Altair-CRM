@@ -26,6 +26,10 @@ describe("phone normalisation", () => {
   it("parses national numbers using the provided region", () => {
     expect(normalizePhone("07911 123456", "GB")!.e164).toBe("+447911123456");
   });
+  it("accepts country code written without +", () => {
+    expect(normalizePhone("971 6 555 0357", "AE")!.e164).toBe("+97165550357");
+    expect(normalizePhone("971 58 638 2901", "AE")!.type).toBe("MOBILE");
+  });
   it("rejects invalid input instead of guessing", () => {
     expect(normalizePhone("12345", "AE")).toBeNull();
     expect(normalizePhone("", "AE")).toBeNull();
