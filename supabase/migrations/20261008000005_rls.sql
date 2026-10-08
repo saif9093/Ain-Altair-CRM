@@ -23,6 +23,7 @@ alter table public.website_audits enable row level security;
 alter table public.lead_scores enable row level security;
 alter table public.sales_intent enable row level security;
 alter table public.opportunities enable row level security;
+alter table public.lead_pricing enable row level security;
 alter table public.outreach enable row level security;
 alter table public.follow_ups enable row level security;
 alter table public.notes enable row level security;
@@ -113,6 +114,12 @@ create policy opportunities_read on public.opportunities for select to authentic
 create policy opportunities_write on public.opportunities for all to authenticated
   using (public.can_edit_business_id(business_id) and public.has_perm('leads.override'))
   with check (public.can_edit_business_id(business_id) and public.has_perm('leads.override'));
+-- Prices / estimated values / deal amounts: pricing.view only (hidden from BDOs).
+create policy lead_pricing_read on public.lead_pricing for select to authenticated
+  using (public.has_perm('pricing.view') and public.can_view_business_id(business_id));
+create policy lead_pricing_write on public.lead_pricing for all to authenticated
+  using (public.has_perm('pricing.view') and public.can_edit_business_id(business_id))
+  with check (public.has_perm('pricing.view') and public.can_edit_business_id(business_id));
 create policy snapshots_read on public.business_snapshots for select to authenticated using (public.can_view_business_id(business_id));
 
 create policy outreach_read on public.outreach for select to authenticated using (public.can_view_business_id(business_id));

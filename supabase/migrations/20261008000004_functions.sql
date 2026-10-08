@@ -188,6 +188,11 @@ begin
    where m.business_id = p_merge and o.business_id = p_keep and o.type = m.type;
   update public.opportunities set business_id = p_keep where business_id = p_merge;
 
+  -- Commercial row: keep the survivor's; adopt the merged one only if none exists.
+  update public.lead_pricing set business_id = p_keep
+   where business_id = p_merge and not exists (select 1 from public.lead_pricing where business_id = p_keep);
+  delete from public.lead_pricing where business_id = p_merge;
+
   update public.outreach set business_id = p_keep where business_id = p_merge;
   get diagnostics n = row_count; moved := moved || jsonb_build_object('outreach', n);
   update public.follow_ups set business_id = p_keep where business_id = p_merge;
@@ -300,9 +305,11 @@ language sql stable security invoker set search_path = public as $$
     'meetings', count(*) filter (where pipeline_stage = 'MEETING'),
     'quotes', count(*) filter (where pipeline_stage = 'QUOTE_SENT'),
     'won', count(*) filter (where pipeline_stage = 'WON'),
-    'pipeline_value', coalesce(sum(coalesce(deal_value, recommended_price_max)) filter (where pipeline_stage in ('INTERESTED','MEETING','QUOTE_SENT')), 0),
-    'won_value', coalesce(sum(coalesce(deal_value, recommended_price_max)) filter (where pipeline_stage = 'WON'), 0),
-    'opportunity_value', coalesce(sum(opportunity_value) filter (where pipeline_stage not in ('WON','LOST')), 0),
+    -- Amounts come from lead_pricing, which RLS hides without pricing.view (→ null).
+    'pipeline_value', (select sum(coalesce(lp.deal_value, lp.recommended_price_max)) from public.lead_pricing lp join public.businesses b2 on b2.id = lp.business_id where b2.lifecycle = 'ACTIVE' and b2.pipeline_stage in ('INTERESTED','MEETING','QUOTE_SENT')),
+    'won_value', (select sum(coalesce(lp.deal_value, lp.recommended_price_max)) from public.lead_pricing lp join public.businesses b2 on b2.id = lp.business_id where b2.lifecycle = 'ACTIVE' and b2.pipeline_stage = 'WON'),
+    'opportunity_value', (select sum(lp.opportunity_value) from public.lead_pricing lp join public.businesses b2 on b2.id = lp.business_id where b2.lifecycle = 'ACTIVE' and b2.pipeline_stage not in ('WON','LOST')),
+    'pricing_visible', public.has_perm('pricing.view'),
     'by_stage', (
       select coalesce(jsonb_object_agg(pipeline_stage, c), '{}'::jsonb)
       from (select pipeline_stage, count(*) c from public.businesses where lifecycle = 'ACTIVE' group by pipeline_stage) s
@@ -334,7 +341,7 @@ language sql stable security invoker set search_path = public as $$
     round(100.0 * count(*) filter (where b.whatsapp_e164 is not null) / nullif(count(*),0), 1),
     round(100.0 * count(*) filter (where exists (select 1 from public.business_socials s where s.business_id = b.id and s.platform = 'INSTAGRAM')) / nullif(count(*),0), 1),
     round(100.0 * count(*) filter (where b.phone_e164 is not null) / nullif(count(*),0), 1),
-    coalesce(sum(b.opportunity_value), 0),
+    (select sum(lp.opportunity_value) from public.lead_pricing lp where lp.business_id = any(array_agg(b.id))),
     round(avg(b.lead_score), 1)
   from public.businesses b
   where b.lifecycle in ('ACTIVE','RESEARCH')

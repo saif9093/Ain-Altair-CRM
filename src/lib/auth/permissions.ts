@@ -32,6 +32,7 @@ export const PERMISSIONS = {
   "leads.override": { category: "Leads", description: "Override score, opportunity, website status, category and price" },
   "leads.merge": { category: "Leads", description: "Merge duplicate records" },
   "leads.bulk": { category: "Leads", description: "Run bulk actions" },
+  "pricing.view": { category: "Commercial", description: "See prices, estimated opportunity values and deal amounts (hidden from BDOs by default)" },
   "search.run": { category: "Research", description: "Start lead searches" },
   "search.view": { category: "Research", description: "View searches, jobs and research results" },
   "search.manage_templates": { category: "Research", description: "Edit and delete any saved search" },
@@ -63,6 +64,8 @@ const SALES_CORE: PermissionKey[] = ["outreach.log", "notes.create", "exports.ru
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   SUPER_ADMIN: [...ALL_PERMISSIONS],
   ADMIN: ALL_PERMISSIONS.filter((p) => !["admin.approvals", "admin.data_purge", "leads.delete_permanent"].includes(p)),
+  // NOTE: pricing.view is deliberately NOT given to MANAGER/SALES/RESEARCHER/VIEWER.
+  // Grant it per user in Admin → Users → Permissions if needed.
   MANAGER: [
     "leads.view_own", "leads.view_team", "leads.create", "leads.edit", "leads.assign", "leads.archive",
     "leads.override", "leads.merge", "leads.bulk",

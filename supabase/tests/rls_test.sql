@@ -116,6 +116,19 @@ set local role authenticated;
 select pg_temp.assert_eq('manager sees only team note', (select count(*) from public.notes), 1);
 reset role;
 
+-- Pricing is hidden from sales (BDOs) but visible to super admin
+insert into public.lead_pricing (business_id, recommended_price_min, recommended_price_max, opportunity_value)
+  select id, 750, 1000, 1200 from t_ids where k = 'b1';
+select pg_temp.act_as('s1');
+set local role authenticated;
+select pg_temp.assert_eq('sales cannot see pricing', (select count(*) from public.lead_pricing), 0);
+select pg_temp.assert_eq('sales dashboard has no amounts', (select count(*) from (select public.dashboard_stats() d) x where d->>'opportunity_value' is null), 1);
+reset role;
+select pg_temp.act_as('sa');
+set local role authenticated;
+select pg_temp.assert_eq('super admin sees pricing', (select count(*) from public.lead_pricing), 1);
+reset role;
+
 -- Sales cannot merge; manager can, and children move to the survivor
 select pg_temp.act_as('s1');
 set local role authenticated;

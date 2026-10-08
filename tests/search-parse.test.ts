@@ -38,7 +38,7 @@ describe("natural language search parsing", () => {
 
   it("supports radius searches", () => {
     const r = parseNaturalQuery("salons within 10 km of Downtown Dubai with 4.5 stars");
-    expect(r.criteria.locations[0]).toMatchObject({ kind: "RADIUS", radiusM: 10000, label: "Downtown Dubai" });
+    expect(r.criteria.locations[0]!).toMatchObject({ kind: "RADIUS", radiusM: 10000, label: "Downtown Dubai" });
     expect(r.criteria.business?.minRating).toBe(4.5);
     expect(r.criteria.categories[0].key).toBe("salons");
   });
@@ -72,7 +72,7 @@ describe("natural language search parsing", () => {
     const r = parseNaturalQuery("Cleaning in Dubai excluding industrial cleaning, no franchises");
     expect(r.criteria.excludeKeywords).toContain("industrial cleaning");
     expect(r.criteria.business?.franchise).toBe("EXCLUDE");
-    expect(r.criteria.categories[0].terms.some((t) => /industrial/i.test(t))).toBe(false);
+    expect((r.criteria.categories[0].terms ?? []).some((t) => /industrial/i.test(t))).toBe(false);
   });
 
   it("reads target counts", () => {

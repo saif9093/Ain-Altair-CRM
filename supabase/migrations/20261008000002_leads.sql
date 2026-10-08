@@ -115,13 +115,10 @@ create table public.businesses (
   sales_intent_factors jsonb,
   tier text check (tier in ('HOT','HIGH','GOOD','MEDIUM','LOW')),
 
-  -- commercial
-  currency text not null default 'AED',
+  -- commercial (non-monetary). Amounts live in public.lead_pricing, which is
+  -- only readable with the pricing.view permission.
   recommended_service text,
   recommended_package text,
-  recommended_price_min numeric,
-  recommended_price_max numeric,
-  opportunity_value numeric,
   upsells text[] not null default '{}',
 
   -- sales
@@ -130,7 +127,6 @@ create table public.businesses (
   team_id uuid references public.teams(id) on delete set null,
   next_follow_up_at timestamptz,
   last_contacted_at timestamptz,
-  deal_value numeric,
   lost_reason text,
 
   -- AI layer (inference — never treated as observed fact)
@@ -319,9 +315,6 @@ create table public.opportunities (
   type text not null check (type in ('NEW_WEBSITE','WEBSITE_REDESIGN','WEBSITE_FIX','LANDING_PAGE','MOBILE_OPTIMISATION','SEO','LOCAL_SEO','GOOGLE_BUSINESS_OPTIMISATION','WHATSAPP_INTEGRATION','BOOKING_SYSTEM','DIGITAL_MENU','CATALOGUE','LEAD_FORM','CRM','AUTOMATION','MAINTENANCE','OTHER')),
   priority int not null default 50 check (priority between 0 and 100),
   value_band text check (value_band in ('$','$$','$$$','$$$$','$$$$$')),
-  estimated_value_min numeric,
-  estimated_value_max numeric,
-  currency text not null default 'AED',
   reason text not null,
   evidence jsonb not null default '[]'::jsonb,
   status text not null default 'OPEN' check (status in ('OPEN','PITCHED','WON','LOST','DISMISSED')),
@@ -333,6 +326,21 @@ create table public.opportunities (
 );
 create trigger opportunities_touch before update on public.opportunities for each row execute function public.touch_updated_at();
 create index opportunities_type_idx on public.opportunities(type, status);
+
+-- Commercial amounts, isolated so row-level security can hide them from BDOs.
+create table public.lead_pricing (
+  business_id uuid primary key references public.businesses(id) on delete cascade,
+  currency text not null default 'AED',
+  recommended_price_min numeric,
+  recommended_price_max numeric,
+  opportunity_value numeric,          -- ESTIMATE
+  opportunity_values jsonb not null default '{}'::jsonb, -- {"NEW_WEBSITE":{"min":750,"max":1000}}
+  deal_value numeric,                 -- actual agreed amount
+  price_override boolean not null default false,
+  updated_by uuid references auth.users(id),
+  updated_at timestamptz not null default now()
+);
+create trigger lead_pricing_touch before update on public.lead_pricing for each row execute function public.touch_updated_at();
 
 create table public.outreach (
   id uuid primary key default gen_random_uuid(),

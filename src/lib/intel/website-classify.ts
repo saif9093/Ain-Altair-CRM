@@ -33,6 +33,7 @@ export interface AuditObservation {
   hasLocationPages?: boolean | null;
   hasStructuredData?: boolean | null;
   navLinkCount?: number | null;
+  internalLinkCount?: number | null;
   imageCount?: number | null;
   imagesMissingAlt?: number | null;
   copyrightYear?: number | null;
