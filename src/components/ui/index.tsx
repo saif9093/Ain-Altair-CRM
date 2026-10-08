@@ -5,13 +5,14 @@ export function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
 }
 
-type BtnVariant = "primary" | "dark" | "ghost" | "outline" | "danger";
+type BtnVariant = "primary" | "dark" | "ghost" | "outline" | "danger" | "light";
 const btn: Record<BtnVariant, string> = {
   primary: "bg-signal text-white hover:bg-signal-2",
   dark: "bg-paper text-white hover:bg-navy",
   ghost: "bg-transparent text-paper hover:bg-ink-4",
   outline: "border border-line-strong bg-ink-3 text-paper hover:border-paper",
   danger: "border border-signal/40 bg-signal-tint text-signal-ink hover:bg-signal hover:text-white",
+  light: "bg-white text-navy hover:bg-ink-2",
 };
 const btnBase = "focus-ring inline-flex items-center justify-center gap-2 rounded-full font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none";
 const btnSize = { sm: "h-8 px-3.5 text-[13px]", md: "h-10 px-5 text-sm", lg: "h-12 px-7 text-[15px]" };

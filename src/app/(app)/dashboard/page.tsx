@@ -69,7 +69,7 @@ export default async function Dashboard() {
           </div>
           <div className="flex flex-wrap gap-2">
             {s.can("outreach.log") && <ButtonLink href="/outreach" variant="primary" size="lg"><Send size={17} />Start outreach{queueSize ? ` (${queueSize})` : ""}</ButtonLink>}
-            {s.can("search.run") && <ButtonLink href="/search" size="lg" className="bg-white text-navy hover:bg-ink-2"><Search size={17} />Find new leads</ButtonLink>}
+            {s.can("search.run") && <ButtonLink href="/search" size="lg" variant="light"><Search size={17} />Find new leads</ButtonLink>}
           </div>
         </div>
       </section>
