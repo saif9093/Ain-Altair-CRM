@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
@@ -37,7 +38,7 @@ export default async function ImportPage({ params }: { params: Promise<{ id: str
           </div>
           <div className="flex gap-2">
             {imp.target_lifecycle !== "ACTIVE" && session.can("research.approve") && <PromoteButton id={imp.id} />}
-            <a href="/leads?sort=newest" className="inline-flex h-10 items-center rounded-full bg-paper px-5 text-sm text-white">View leads →</a>
+            <Link href="/leads?sort=newest" className="inline-flex h-10 items-center rounded-full bg-paper px-5 text-sm text-white">View leads →</Link>
           </div>
         </Card>
       )}
