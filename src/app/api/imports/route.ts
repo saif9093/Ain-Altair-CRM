@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/audit";
 import { parseUpload } from "@/lib/imports/parse";
 import { readSheet, sheetsConfigured } from "@/lib/imports/sheets";
+import { readPublicSheet } from "@/lib/imports/public-sheet";
 import { suggestMapping } from "@/lib/imports/mapping";
 
 export const maxDuration = 120;
@@ -24,10 +25,17 @@ export async function POST(req: Request) {
       filename = file.name.slice(0, 200);
       fileType = /\.csv$/i.test(filename) ? "CSV" : "XLSX";
       parsed = await parseUpload(await file.arrayBuffer(), filename);
-    } else if (typeof sheetUrl === "string" && sheetUrl) {
-      if (!sheetsConfigured()) return NextResponse.json({ error: "Google Sheets is not configured" }, { status: 400 });
-      parsed = await readSheet(sheetUrl);
-      filename = "Google Sheet";
+    } else if (typeof sheetUrl === "string" && sheetUrl.trim()) {
+      // Public link first (no setup needed); fall back to the service account for private sheets.
+      try {
+        const pub = await readPublicSheet(sheetUrl);
+        parsed = pub;
+        filename = pub.title;
+      } catch (e) {
+        if (!sheetsConfigured() || /Google Sheets link|valid link/.test((e as Error).message)) throw e;
+        parsed = await readSheet(sheetUrl);
+        filename = "Google Sheet";
+      }
       fileType = "GOOGLE_SHEETS";
     } else return NextResponse.json({ error: "Choose a file or Google Sheet" }, { status: 400 });
     if (!parsed.rows.length) return NextResponse.json({ error: "No data rows found" }, { status: 400 });
@@ -43,6 +51,6 @@ export async function POST(req: Request) {
     await writeAudit({ organisationId: s.organisationId, userId: s.userId, userEmail: s.email, action: "import.started", entityType: "import", entityId: imp.id, after: { filename, rows: parsed.rows.length } });
     return NextResponse.json({ id: imp.id });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: e instanceof AuthError ? e.status : 500 });
+    return NextResponse.json({ error: (e as Error).message }, { status: e instanceof AuthError ? e.status : 400 });
   }
 }
