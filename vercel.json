@@ -1,6 +1,6 @@
 {
+  "regions": ["bom1"],
   "crons": [
-    { "path": "/api/cron/worker", "schedule": "* * * * *" },
-    { "path": "/api/cron/scheduler", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/scheduler", "schedule": "0 4 * * *" }
   ]
 }
