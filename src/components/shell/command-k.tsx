@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Search as SearchIcon } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { TIER_TONE } from "@/lib/format";
 
@@ -38,9 +39,10 @@ export function CommandK() {
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="focus-ring flex h-9 w-full max-w-md items-center justify-between rounded-full border border-line-strong bg-ink-3 px-4 text-sm text-dim hover:border-paper">
-        <span>Search businesses, phone, email, website, @instagram, lead ID…</span>
-        <span className="tag-mono rounded border border-line px-1.5 text-[10px]">⌘K</span>
+      <button onClick={() => setOpen(true)} className="focus-ring flex h-10 w-full max-w-md items-center gap-2 rounded-full border border-line-strong bg-ink-3 px-4 text-sm text-dim shadow-sm hover:border-paper">
+        <SearchIcon size={15} className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-left">Search leads, phone, website, @instagram…</span>
+        <span className="tag-mono hidden shrink-0 rounded border border-line px-1.5 text-[10px] sm:inline">⌘K</span>
       </button>
       {open && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center bg-paper/40 p-4 pt-[12vh]" onClick={() => setOpen(false)}>

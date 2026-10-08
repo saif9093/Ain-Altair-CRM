@@ -341,3 +341,51 @@ export async function createLead(input: { name: string; phone?: string; website?
     return { ok: true as const, data: { id: r.businessId }, message: r.created ? "Lead created" : "Matched an existing record" };
   });
 }
+
+const OUTCOMES = {
+  WHATSAPP_SENT: { channel: "WHATSAPP", stage: "CONTACTED", followDays: 2, label: "WhatsApp message sent" },
+  CALLED_INTERESTED: { channel: "CALL", stage: "INTERESTED", followDays: 1, label: "Called — interested" },
+  REPLIED: { channel: "WHATSAPP", stage: "REPLIED", followDays: 1, label: "They replied" },
+  NO_ANSWER: { channel: "CALL", stage: "CONTACTED", followDays: 1, label: "No answer — try again" },
+  NOT_INTERESTED: { channel: "OTHER", stage: "LOST", followDays: 0, label: "Not interested" },
+  MEETING: { channel: "CALL", stage: "MEETING", followDays: 1, label: "Meeting booked" },
+} as const;
+export type QuickOutcome = keyof typeof OUTCOMES;
+
+/**
+ * One-click outreach outcome for the guided BDO flow: logs the outreach,
+ * moves the pipeline stage, closes due follow-ups and schedules the next one.
+ */
+export async function quickOutcome(input: { businessId: string; outcome: QuickOutcome; message?: string; note?: string }) {
+  return act(async () => {
+    const s = await assertPermission("outreach.log");
+    const id = uuid.parse(input.businessId);
+    const o = OUTCOMES[input.outcome];
+    if (!o) throw new Error("Unknown outcome");
+    const supabase = await createClient();
+    const { data: b } = await supabase.from("businesses").select("pipeline_stage, owner_id").eq("id", id).single();
+    if (!b) throw new Error("Lead not found or not visible");
+    const now = new Date();
+    const { error } = await supabase.from("outreach").insert({ business_id: id, channel: o.channel, message: input.message?.slice(0, 5000) ?? null, outcome: o.label + (input.note ? ` — ${input.note.slice(0, 300)}` : ""), user_id: s.userId });
+    if (error) throw new Error(error.message);
+    // Close any follow-ups that are due — this contact handles them.
+    await supabase.from("follow_ups").update({ status: "DONE", completed_at: now.toISOString() }).eq("business_id", id).eq("status", "PENDING").lte("due_at", new Date(now.getTime() + 12 * 3_600_000).toISOString());
+    let next: string | null = null;
+    if (o.followDays) {
+      const due = new Date(now.getTime() + o.followDays * 86_400_000);
+      due.setHours(10, 0, 0, 0);
+      next = due.toISOString();
+      await supabase.from("follow_ups").insert({ business_id: id, due_at: next, note: `Follow up: ${o.label.toLowerCase()}`, assigned_to: s.userId, created_by: s.userId });
+    }
+    const patch: Record<string, unknown> = { last_contacted_at: now.toISOString(), next_follow_up_at: next };
+    const order = ["NOT_CONTACTED", "CONTACTED", "REPLIED", "INTERESTED", "MEETING", "QUOTE_SENT", "WON"];
+    // Never move a lead backwards (e.g. "no answer" on an interested lead).
+    if (o.stage === "LOST" || order.indexOf(o.stage) > order.indexOf(b.pipeline_stage)) patch.pipeline_stage = o.stage;
+    if (o.stage === "LOST") patch.lost_reason = input.note ?? "Not interested";
+    if (!b.owner_id) patch.owner_id = s.userId;
+    await supabase.from("businesses").update(patch).eq("id", id);
+    await createAdminClient().from("activities").insert({ organisation_id: s.organisationId, business_id: id, type: "OUTREACH", title: o.label, actor_id: s.userId, data: { outcome: input.outcome, stage: patch.pipeline_stage ?? b.pipeline_stage } });
+    revalidatePath("/outreach");
+    return { ok: true as const, message: o.followDays ? `${o.label} · follow-up ${o.followDays === 1 ? "tomorrow" : `in ${o.followDays} days`}` : o.label };
+  });
+}

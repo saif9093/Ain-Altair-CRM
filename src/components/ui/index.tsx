@@ -24,7 +24,7 @@ export function ButtonLink({ variant = "dark", size = "md", className, ...p }: C
 }
 
 export function Card({ className, ...p }: ComponentProps<"div">) {
-  return <div className={cx("rounded-2xl border border-line bg-ink-3", className)} {...p} />;
+  return <div className={cx("rounded-2xl border border-line bg-ink-3 shadow-[0_1px_2px_rgba(10,10,10,.04),0_8px_24px_-12px_rgba(20,33,61,.08)]", className)} {...p} />;
 }
 export function CardHeader({ title, eyebrow, action, className }: { title?: ReactNode; eyebrow?: string; action?: ReactNode; className?: string }) {
   return (
@@ -64,14 +64,25 @@ export function Badge({ tone = "neutral", className, children, title }: { tone?:
   return <span title={title} className={cx("tag-mono inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px]", tones[tone], className)}>{children}</span>;
 }
 
-export function Stat({ label, value, hint, accent }: { label: string; value: ReactNode; hint?: ReactNode; accent?: boolean }) {
-  return (
-    <Card className="p-4">
-      <div className="tag-mono text-[10.5px] text-mute">{label}</div>
-      <div className={cx("mt-2 text-[28px] font-extrabold tracking-tight", accent && "text-signal")}>{value}</div>
-      {hint && <div className="mt-1 text-xs text-dim">{hint}</div>}
+const statTones = {
+  neutral: "bg-ink-4 text-paper",
+  signal: "bg-signal-tint text-signal",
+  navy: "bg-navy-tint text-navy",
+  ok: "bg-ok-tint text-ok",
+  warn: "bg-warn-tint text-warn",
+};
+export function Stat({ label, value, hint, accent, icon, tone = "neutral", href }: { label: string; value: ReactNode; hint?: ReactNode; accent?: boolean; icon?: ReactNode; tone?: keyof typeof statTones; href?: string }) {
+  const body = (
+    <Card className={cx("relative h-full p-4 transition", href && "hover:-translate-y-0.5 hover:border-line-strong")}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="tag-mono text-[10.5px] text-mute">{label}</div>
+        {icon && <div className={cx("grid h-8 w-8 shrink-0 place-items-center rounded-xl", statTones[accent ? "signal" : tone])}>{icon}</div>}
+      </div>
+      <div className={cx("mt-2 text-[30px] font-extrabold leading-none tracking-tight", accent && "text-signal")}>{value}</div>
+      {hint && <div className="mt-2 text-xs text-dim">{hint}</div>}
     </Card>
   );
+  return href ? <Link href={href} className="block">{body}</Link> : body;
 }
 
 export function Empty({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
