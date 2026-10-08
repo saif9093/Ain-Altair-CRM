@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  CalendarClock, ChartColumn, ClipboardCheck, Download, Gauge, History, House, Layers, Map, MapPin, Menu, Plug, ScrollText, Search,
+  CalendarClock, ChartColumn, ClipboardCheck, Download, Gauge, History, House, Layers, Map, MapPin, Menu, Plug, Plus, ScrollText, Search,
   Send, Settings, ShieldCheck, Sparkles, SquareKanban, Tags, Target, Upload, UserCheck, Users, X, Zap, type LucideIcon,
 } from "lucide-react";
 import { cx } from "@/components/ui";
@@ -13,7 +13,7 @@ import type { NavSection } from "./nav";
 const ICONS: Record<string, LucideIcon> = {
   home: House, send: Send, target: Target, calendar: CalendarClock, kanban: SquareKanban, users: Users, search: Search, history: History,
   clipboard: ClipboardCheck, map: Map, zap: Zap, chart: ChartColumn, sparkles: Sparkles, upload: Upload, download: Download, gauge: Gauge,
-  usercheck: UserCheck, shield: ShieldCheck, plug: Plug, tags: Tags, pin: MapPin, layers: Layers, scroll: ScrollText, settings: Settings,
+  usercheck: UserCheck, shield: ShieldCheck, plug: Plug, tags: Tags, pin: MapPin, layers: Layers, scroll: ScrollText, settings: Settings, plus: Plus,
 };
 
 export function Sidebar({ sections, user, badges }: { sections: NavSection[]; user: { name: string; role: string }; badges: Record<string, number> }) {
@@ -34,7 +34,7 @@ export function Sidebar({ sections, user, badges }: { sections: NavSection[]; us
             <div key={s.title || "root"} className="mb-3">
               {s.title && <div className="tag-mono px-3 pb-1.5 pt-2 text-[9.5px] text-white/35">{s.title}</div>}
               {s.items.map((i) => {
-                const active = path === i.href || (i.href !== "/admin" && i.href !== "/dashboard" && path.startsWith(`${i.href}/`));
+                const active = path === i.href || (i.href !== "/dashboard" && i.href !== "/admin" && path.startsWith(`${i.href}/`)) || (i.href === "/admin" && path.startsWith("/admin/") && !path.startsWith("/admin/users"));
                 const Icon = ICONS[i.icon] ?? House;
                 const highlight = i.href === "/outreach";
                 return (
@@ -42,7 +42,7 @@ export function Sidebar({ sections, user, badges }: { sections: NavSection[]; us
                     className={cx("group mb-0.5 flex items-center gap-3 rounded-xl px-3 py-2 text-[13.5px] transition-all",
                       active ? "bg-white text-navy shadow-sm" : highlight ? "bg-signal/90 text-white hover:bg-signal" : "text-white/70 hover:bg-white/8 hover:text-white")}>
                     <Icon size={16} strokeWidth={2} className={cx(active ? "text-signal" : highlight ? "text-white" : "text-white/45 group-hover:text-white/80")} />
-                    <span className="flex-1">{i.label}</span>
+                    <span className="flex-1">{i.label}{i.hint && !active && <span className="block text-[10.5px] font-normal opacity-60">{i.hint}</span>}</span>
                     {!!badges[i.href] && <span className={cx("rounded-full px-1.5 text-[10.5px] font-semibold", active ? "bg-signal text-white" : "bg-white/15 text-white")}>{badges[i.href]}</span>}
                   </Link>
                 );

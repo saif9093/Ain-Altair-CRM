@@ -5,54 +5,22 @@ export interface NavSection { title: string; items: NavItem[] }
 
 const LEADS: PermissionKey[] = ["leads.view_own", "leads.view_team", "leads.view_all"];
 
+/** Deliberately small: the daily loop only. Power tools live under Settings → Advanced. */
 export const NAV: NavSection[] = [
-  { title: "", items: [{ href: "/dashboard", label: "Home", icon: "home" }] },
   {
-    title: "Sell",
+    title: "",
     items: [
-      { href: "/outreach", label: "Start outreach", icon: "send", perm: "outreach.log", hint: "One lead at a time" },
-      { href: "/prospects", label: "Today's prospects", icon: "target", anyOf: LEADS },
-      { href: "/follow-ups", label: "Follow-ups", icon: "calendar", perm: "outreach.log" },
-      { href: "/pipeline", label: "Pipeline", icon: "kanban", anyOf: LEADS },
+      { href: "/dashboard", label: "Home", icon: "home" },
+      { href: "/outreach", label: "Today", icon: "send", perm: "outreach.log", hint: "Who to contact now" },
       { href: "/leads", label: "Leads", icon: "users", anyOf: LEADS },
-    ],
-  },
-  {
-    title: "Find",
-    items: [
-      { href: "/search", label: "Lead search", icon: "search", perm: "search.run" },
-      { href: "/searches", label: "Search history", icon: "history", perm: "search.view" },
-      { href: "/research", label: "Research queue", icon: "clipboard", perm: "research.review" },
-      { href: "/map", label: "Map", icon: "map", anyOf: LEADS },
-    ],
-  },
-  {
-    title: "Insights",
-    items: [
-      { href: "/opportunities", label: "Opportunities", icon: "zap", anyOf: ["leads.view_team", "leads.view_all"] },
-      { href: "/analytics", label: "Analytics", icon: "chart", perm: "analytics.view" },
-      { href: "/assistant", label: "AI assistant", icon: "sparkles", perm: "assistant.use" },
-    ],
-  },
-  {
-    title: "Data",
-    items: [
-      { href: "/imports", label: "Imports", icon: "upload", perm: "imports.run" },
-      { href: "/exports", label: "Exports", icon: "download", perm: "exports.run" },
+      { href: "/add", label: "Add leads", icon: "plus", anyOf: ["imports.run", "search.run"] },
     ],
   },
   {
     title: "Admin",
     items: [
-      { href: "/admin", label: "Overview", icon: "gauge", anyOf: ["admin.users", "admin.approvals"] },
-      { href: "/admin/users", label: "Users & teams", icon: "usercheck", perm: "admin.users" },
-      { href: "/admin/approvals", label: "Approvals", icon: "shield", perm: "admin.approvals" },
-      { href: "/admin/providers", label: "Providers", icon: "plug", perm: "admin.providers" },
-      { href: "/admin/categories", label: "Categories", icon: "tags", perm: "admin.categories" },
-      { href: "/admin/locations", label: "Locations", icon: "pin", perm: "admin.locations" },
-      { href: "/admin/scoring", label: "Scoring", icon: "layers", perm: "admin.scoring" },
-      { href: "/admin/audit-logs", label: "Audit logs", icon: "scroll", perm: "admin.audit" },
-      { href: "/admin/settings", label: "Settings", icon: "settings", perm: "admin.settings" },
+      { href: "/admin/users", label: "Team", icon: "usercheck", perm: "admin.users" },
+      { href: "/admin", label: "Settings", icon: "settings", anyOf: ["admin.users", "admin.approvals", "admin.providers", "admin.settings"] },
     ],
   },
 ];

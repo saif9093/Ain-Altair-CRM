@@ -10,6 +10,7 @@ export interface CreateJobInput {
   searchId?: string | null;
   scheduled?: boolean;
   previousJobId?: string | null;
+  autoApprove?: { assignTo?: string | null } | null;
 }
 
 /** Creates a QUEUED search job and its planning task. Work happens in the worker. */
@@ -25,7 +26,7 @@ export async function createSearchJob(db: SupabaseClient, input: CreateJobInput)
     is_scheduled: !!input.scheduled,
     previous_job_id: input.previousJobId ?? null,
     target_count: c.output.targetCount,
-    configuration: { criteria: c },
+    configuration: { criteria: c, ...(input.autoApprove ? { autoApprove: input.autoApprove } : {}) },
     filters: { business: c.business, digital: c.digital, contact: c.contact, quality: c.quality, exclude: c.excludeKeywords },
     location_definition: { requested: c.locations },
     category_definition: { requested: c.categories },

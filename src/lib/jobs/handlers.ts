@@ -248,6 +248,23 @@ async function finalizeSearch(db: SupabaseClient, t: JobTask) {
     await db.from("search_results").update({ is_new: false }).eq("job_id", job.id).eq("matched_existing", true);
   }
 
+  // Simple mode: searches started from "Add leads" go straight into the CRM
+  // (everything not rejected), optionally assigned to a user.
+  const auto = job.configuration?.autoApprove as { assignTo?: string | null } | undefined;
+  if (auto) {
+    const ids: string[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data } = await db.from("search_results").select("id, business_id").eq("job_id", job.id).in("stage", ["QUALIFIED", "REVIEW_REQUIRED", "RAW"]).range(from, from + 999);
+      for (const r of data ?? []) ids.push(r.business_id);
+      if (data?.length) await db.from("search_results").update({ stage: "APPROVED", reviewed_at: new Date().toISOString() }).in("id", data.map((r) => r.id));
+      if (!data || data.length < 1000) break;
+    }
+    for (let i = 0; i < ids.length; i += 300) {
+      const patch: Record<string, unknown> = { lifecycle: "ACTIVE", approved_at: new Date().toISOString(), approved_by: job.created_by };
+      if (auto.assignTo) patch.owner_id = auto.assignTo;
+      await db.from("businesses").update(patch).in("id", ids.slice(i, i + 300)).eq("lifecycle", "RESEARCH");
+    }
+  }
   const stats = await computeJobStats(db, job.id);
   const resolved = ((job.location_definition?.resolved ?? []) as { label: string; city?: string | null }[]);
   const recommendations = await recommendNextSearches(db, job.organisation_id, stats, resolved).catch(() => []);
@@ -297,6 +314,15 @@ async function processImport(db: SupabaseClient, t: JobTask): Promise<HandlerRes
   const { executeImport } = await import("@/lib/imports/execute");
   const r = await executeImport(db, t.payload.importId as string, t.payload.actorId as string, Date.now() + 35_000);
   if (!r.done) return { deferMs: 1_000 };
+  const assignTo = t.payload.assignTo as string | null | undefined;
+  if (assignTo) {
+    const { data } = await db.from("import_rows").select("business_id").eq("import_id", t.payload.importId as string).not("business_id", "is", null).limit(20_000);
+    const ids = [...new Set((data ?? []).map((d) => d.business_id as string))];
+    if (ids.length) {
+      const { executeAssignment } = await import("@/lib/leads/assign");
+      await executeAssignment(db, t.organisation_id, t.payload.actorId as string, ids, [assignTo], null, "MANUAL");
+    }
+  }
 }
 
 export const HANDLERS: Record<string, Handler> = {

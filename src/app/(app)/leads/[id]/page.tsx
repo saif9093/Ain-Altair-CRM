@@ -85,6 +85,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             </div>
           </Card>
 
+          <details className="group rounded-2xl border border-line bg-ink-3">
+            <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold">Research details <span className="font-normal text-mute">— website check, score breakdown, data sources</span><span className="float-right text-mute group-open:rotate-180">▾</span></summary>
+            <div className="space-y-6 p-4 pt-0">
           <Card>
             <CardHeader eyebrow="Evidence" title="Why we believe this" />
             <div className="space-y-2 p-5 text-sm">
@@ -149,6 +152,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             </div>
           </Card>
 
+            </div>
+          </details>
+
           <NotesBox businessId={id} notes={(notes ?? []) as never} canWrite={s.can("notes.create")} />
 
           <Card>
@@ -167,8 +173,15 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             ownerName={(b.owner as { full_name?: string; email?: string } | null)?.full_name ?? (b.owner as { email?: string } | null)?.email ?? null} />
           {pricing !== null && s.can("pricing.view") && <PricingPanel businessId={id} pricing={pricing} currency={b.currency ?? "AED"} money={{ min: money(pricing?.recommended_price_min), max: money(pricing?.recommended_price_max), opp: money(pricing?.opportunity_value), deal: money(pricing?.deal_value) }} />}
           {s.can("pricing.view") && !pricing && <PricingPanel businessId={id} pricing={null} currency="AED" money={{ min: "—", max: "—", opp: "—", deal: "—" }} />}
-          {s.can("leads.override") && <OverridePanel businessId={id} />}
-          <Reprocess businessId={id} canResearch={s.can("research.review")} canEdit={s.can("leads.edit")} />
+          {(s.can("leads.override") || s.can("research.review")) && (
+            <details className="rounded-2xl border border-line bg-ink-3">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold">More actions ▾</summary>
+              <div className="space-y-4 p-3">
+                {s.can("leads.override") && <OverridePanel businessId={id} />}
+                <Reprocess businessId={id} canResearch={s.can("research.review")} canEdit={s.can("leads.edit")} />
+              </div>
+            </details>
+          )}
           {!!dups?.length && <MergePanel currentId={id} candidates={dups as never} canMerge={s.can("leads.merge")} />}
           <Card className="p-4 text-xs text-mute">
             <div>Last researched {fmtRelative(b.last_researched_at)} · last audited {fmtRelative(b.last_audited_at)}</div>

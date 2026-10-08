@@ -37,7 +37,23 @@ export async function saveImportMapping(input: { id: string; mapping: Record<str
   });
 }
 
-export async function runImport(id: string) {
+/** Simple flow: apply automatic mapping + sensible defaults and return the preview counts. */
+export async function quickConfigureImport(id: string) {
+  return act<{ hasName: boolean; rows: number; newCount: number; updateCount: number; skipped: number; nameColumn: string | null }>(async () => {
+    await assertPermission("imports.run");
+    const imp = await ownImport(id);
+    const admin = createAdminClient();
+    const { data: full } = await admin.from("imports").select("column_mapping").eq("id", imp.id).single();
+    const mapping = (full?.column_mapping ?? {}) as Record<string, string | null>;
+    const nameColumn = Object.entries(mapping).find(([, v]) => v === "name")?.[0] ?? null;
+    if (!nameColumn) return { hasName: false, rows: imp.row_count, newCount: 0, updateCount: 0, skipped: 0, nameColumn };
+    await admin.from("imports").update({ mode: "UPSERT", match_strategy: "AUTO", target_lifecycle: "ACTIVE", status: "MAPPED" }).eq("id", imp.id);
+    const c = await previewImport(admin, imp.id);
+    return { hasName: true, rows: imp.row_count, newCount: c.NEW, updateCount: c.UPDATE, skipped: c.DUPLICATE + c.INVALID, nameColumn };
+  });
+}
+
+export async function runImport(id: string, assignTo?: string | null) {
   return act(async () => {
     const s = await assertPermission("imports.run");
     const imp = await ownImport(id);
@@ -49,7 +65,7 @@ export async function runImport(id: string) {
       return { ok: true as const, message: "Large import submitted for Super Admin approval" };
     }
     await admin.from("imports").update({ status: "IMPORTING" }).eq("id", imp.id).in("status", ["PREVIEWED"]);
-    await enqueue(admin, { organisationId: s.organisationId, kind: "import.process", priority: 5, payload: { importId: imp.id, actorId: s.userId } });
+    await enqueue(admin, { organisationId: s.organisationId, kind: "import.process", priority: 5, payload: { importId: imp.id, actorId: s.userId, assignTo: assignTo && s.can("leads.assign") ? assignTo : null } });
     await kickWorker();
     await writeAudit({ organisationId: s.organisationId, userId: s.userId, userEmail: s.email, action: "import.started", entityType: "import", entityId: imp.id, after: { rows: imp.row_count } });
     revalidatePath(`/imports/${imp.id}`);
