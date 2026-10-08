@@ -25,12 +25,9 @@ export function Sidebar({ sections, user, badges }: { sections: NavSection[]; us
       {open && <div className="fixed inset-0 z-30 bg-paper/30 lg:hidden" onClick={() => setOpen(false)} />}
       <aside className={cx("fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy text-white transition-transform lg:translate-x-0", open ? "translate-x-0" : "-translate-x-full")}>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-[radial-gradient(80%_60%_at_100%_100%,rgba(232,70,31,.35),transparent)]" />
-        <Link href="/dashboard" className="relative flex items-center gap-3 px-5 pb-5 pt-6">
-          <Image src="/brand/ainaltair-logo.png" alt="Ain AlTair" width={56} height={38} className="h-auto w-11 brightness-0 invert" />
-          <div className="leading-tight">
-            <div className="text-[14px] font-extrabold tracking-tight">AIN ALTAIR</div>
-            <div className="tag-mono text-[9.5px] text-white/50">Lead Intelligence</div>
-          </div>
+        <Link href="/dashboard" className="relative flex flex-col items-center gap-2 px-5 pb-5 pt-6 text-center">
+          <Image src="/brand/ainaltair-logo.png" alt="Ain AlTair" width={276} height={189} priority className="h-auto w-24 brightness-0 invert" />
+          <div className="tag-mono text-[10.5px] text-white/60">Leads System</div>
         </Link>
         <nav className="scroll-thin relative flex-1 overflow-y-auto px-3 pb-4">
           {sections.map((s) => (
