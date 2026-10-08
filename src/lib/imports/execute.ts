@@ -23,16 +23,23 @@ export function mapRow(raw: Record<string, string>, mapping: Record<string, Impo
   return out;
 }
 
+/** Hard errors make a row invalid (only a missing name). Everything else is a warning and the bad value is dropped. */
 export function validateRow(m: Partial<Record<ImportField, string>>, defaultCountry: string): string[] {
-  const errors: string[] = [];
-  if (!m.name || m.name.length < 2) errors.push("Missing business name");
-  if (m.phone && !normalizePhone(m.phone, defaultCountry)) errors.push(`Invalid phone "${m.phone}"`);
-  if (m.whatsapp && !normalizePhone(m.whatsapp, defaultCountry)) errors.push(`Invalid WhatsApp "${m.whatsapp}"`);
-  if (m.email && !normalizeEmail(m.email)) errors.push(`Invalid email "${m.email}"`);
-  if (m.website && !normalizeUrl(m.website)) errors.push(`Invalid website "${m.website}"`);
-  if (m.google_rating && !(Number(m.google_rating) >= 0 && Number(m.google_rating) <= 5)) errors.push("Rating must be 0–5");
-  if (m.google_reviews && !/^\d+$/.test(m.google_reviews.replace(/,/g, ""))) errors.push("Reviews must be a whole number");
-  return errors;
+  return m.name && m.name.trim().length >= 2 ? [] : ["Missing business name"];
+}
+
+export function cleanRow(m: Partial<Record<ImportField, string>>, defaultCountry: string): { row: Partial<Record<ImportField, string>>; warnings: string[] } {
+  const row = { ...m };
+  const warnings: string[] = [];
+  const drop = (f: ImportField, why: string) => { warnings.push(why); delete row[f]; };
+  if (row.phone && !normalizePhone(row.phone, defaultCountry)) drop("phone", `Phone "${row.phone}" not recognised — imported without phone`);
+  if (row.whatsapp && !normalizePhone(row.whatsapp, defaultCountry)) drop("whatsapp", `WhatsApp "${row.whatsapp}" not recognised — skipped`);
+  if (row.email && !normalizeEmail(row.email)) drop("email", `Email "${row.email}" not valid — skipped`);
+  if (row.website && !normalizeUrl(row.website)) drop("website", `Website "${row.website}" not valid — skipped`);
+  if (row.google_maps_url && !/^https?:\/\//.test(row.google_maps_url)) delete row.google_maps_url;
+  if (row.google_rating && !(Number(row.google_rating) >= 0 && Number(row.google_rating) <= 5)) drop("google_rating", "Rating must be 0–5 — skipped");
+  if (row.google_reviews && !/^\d+$/.test(row.google_reviews.replace(/,/g, ""))) drop("google_reviews", "Reviews must be a whole number — skipped");
+  return { row, warnings };
 }
 
 async function findMatch(db: SupabaseClient, org: string, m: Partial<Record<ImportField, string>>, strategy: MatchStrategy, defaultCountry: string): Promise<{ id: string; reason: string } | null> {
@@ -65,7 +72,7 @@ export async function previewImport(db: SupabaseClient, importId: string) {
   for (let from = 0; ; from += 500) {
     const { data: rows } = await db.from("import_rows").select("id, raw").eq("import_id", importId).order("row_number").range(from, from + 499);
     for (const r of rows ?? []) {
-      const m = mapRow(r.raw, imp.column_mapping);
+      const { row: m, warnings } = cleanRow(mapRow(r.raw, imp.column_mapping), settings.defaultCountry);
       const errors = validateRow(m, settings.defaultCountry);
       let status: keyof typeof counts;
       let matched: { id: string; reason: string } | null = null;
@@ -80,7 +87,7 @@ export async function previewImport(db: SupabaseClient, importId: string) {
         if (matched && imp.mode === "ADD_ONLY") errors.push("Already exists (add-only mode)");
       }
       counts[status]++;
-      await db.from("import_rows").update({ mapped: m, status, errors, matched_business_id: matched?.id ?? null, match_reason: matched?.reason ?? null }).eq("id", r.id);
+      await db.from("import_rows").update({ mapped: m, status, errors: [...errors, ...warnings], matched_business_id: matched?.id ?? null, match_reason: matched?.reason ?? null }).eq("id", r.id);
     }
     if (!rows || rows.length < 500) break;
   }

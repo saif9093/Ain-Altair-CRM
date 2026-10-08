@@ -22,6 +22,8 @@ export function sheetCandidates(url: string): string[] {
   const id = u.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)?.[1];
   if (!id) throw new Error("Could not find the sheet ID in that link");
   return [
+    // .xlsx export keeps original cell values (incl. text hidden behind broken formulas); first tab only
+    ...(!gid || gid === "0" ? [`https://docs.google.com/spreadsheets/d/${id}/export?format=xlsx`] : []),
     `https://docs.google.com/spreadsheets/d/${id}/export?format=csv${g || "&gid=0"}`,
     `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv${g}`,
     // Uploaded Excel files opened in Sheets (rtpof=true): download the original .xlsx
@@ -46,13 +48,20 @@ export async function readPublicSheet(url: string): Promise<{ headers: string[];
       await res.body?.cancel().catch(() => undefined);
       continue;
     }
+    if (candidate.includes("drive.google.com") || candidate.includes("format=xlsx") || /spreadsheetml|octet-stream/.test(type)) {
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength > 15 * 1024 * 1024) throw new Error("Sheet is too large (max 15 MB)");
+      const x = await parseUpload(buf, "sheet.xlsx").catch(() => null);
+      if (!x || !x.headers.length) { attempts.push("xlsx export unreadable"); continue; }
+      return { ...x, title: "Google Sheet" };
+    }
     const text = (await res.text()).replace(/^﻿/, "");
     if (text.length > 15 * 1024 * 1024) throw new Error("Sheet is too large (max 15 MB)");
     const out = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: "greedy", transformHeader: (h) => h.trim() });
     // Drop blank trailing columns (PapaParse renames empty duplicate headers to _1, _2…)
     const headers = (out.meta.fields ?? []).filter((h) => h && h.trim() && !/^_\d+$/.test(h));
     const rows = out.data
-      .map((r) => Object.fromEntries(headers.map((h) => [h, String(r[h] ?? "").trim()])))
+      .map((r) => Object.fromEntries(headers.map((h) => { const v = String(r[h] ?? "").trim(); return [h, /^#(ERROR!|N\/A|REF!|VALUE!|NAME\?|DIV\/0!)$/i.test(v) ? "" : v]; })))
       .filter((r) => Object.values(r).some(Boolean))
       .slice(0, 20_000);
     if (!headers.length) throw new Error("The sheet is empty or the first row has no column headers");

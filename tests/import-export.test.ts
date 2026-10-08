@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import { suggestMapping } from "@/lib/imports/mapping";
-import { mapRow, validateRow } from "@/lib/imports/execute";
+import { mapRow, validateRow, cleanRow } from "@/lib/imports/execute";
 import { allowedColumns, EXPORT_COLUMNS } from "@/lib/exports/columns";
 import { buildCsv, buildXlsx, exportFilename } from "@/lib/exports/build";
+import { cellText } from "@/lib/imports/parse";
+
+describe("spreadsheet cell recovery", () => {
+  it("recovers phone numbers hidden behind broken formulas", () => {
+    expect(cellText({ formula: "+971 4 437 0626", result: "#ERROR!" } as never)).toBe("+971 4 437 0626");
+    expect(cellText({ formula: "SUM(A1:A2)", result: { error: "#REF!" } } as never)).toBe("");
+    expect(cellText("#N/A")).toBe("");
+  });
+  it("turns link labels into the real URL", () => {
+    expect(cellText({ text: "Open in Maps", hyperlink: "https://maps.google.com/?cid=1" } as never)).toBe("https://maps.google.com/?cid=1");
+    expect(cellText({ text: { richText: [{ text: "https://a.ae/" }] }, hyperlink: "https://a.ae/" } as never)).toBe("https://a.ae/");
+  });
+});
 
 describe("import column mapping", () => {
   it("maps common spreadsheet headers", () => {
@@ -15,11 +28,14 @@ describe("import column mapping", () => {
     expect(m["Emirate"]).toBe("city");
     expect(m["Insta"]).toBe("instagram");
   });
-  it("validates rows without guessing", () => {
-    const m = mapRow({ Name: "Al Noor", Tel: "abc", Rating: "7" }, { Name: "name", Tel: "phone", Rating: "google_rating" });
-    const errs = validateRow(m, "AE");
-    expect(errs).toEqual(expect.arrayContaining([expect.stringMatching(/Invalid phone/), "Rating must be 0–5"]));
-    expect(validateRow({ name: "Ok", phone: "0501234567" }, "AE")).toEqual([]);
+  it("only a missing name invalidates a row; bad fields become warnings", () => {
+    const m = mapRow({ Name: "Al Noor", Tel: "#ERROR!", Rating: "7" }, { Name: "name", Tel: "phone", Rating: "google_rating" });
+    const { row, warnings } = cleanRow(m, "AE");
+    expect(validateRow(row, "AE")).toEqual([]);
+    expect(row.phone).toBeUndefined();
+    expect(row.google_rating).toBeUndefined();
+    expect(warnings.join(" ")).toMatch(/Phone .* not recognised/);
+    expect(validateRow({ phone: "0501234567" }, "AE")).toEqual(["Missing business name"]);
   });
 });
 
